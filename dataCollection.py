@@ -1,14 +1,23 @@
 import cv2
 from cvzone.HandTrackingModule import HandDetector
 import numpy as np
+import os
+import time  # For timing functionality
 
 cap = cv2.VideoCapture(0)
 detector = HandDetector(maxHands=2)
 
 offset = 20
-imgSize = 300  # Fixed size for the output images
+imgSize = 350  # Fixed size for the output images
 
-folder = "Data/A"
+# Folder to save images
+folder = "Data/C"
+if not os.path.exists(folder):
+    os.makedirs(folder)
+
+counter = 0  # Counter to keep track of saved images
+save_images = False  # Flag to control automatic saving
+start_time = None  # To track when saving starts
 
 while True:
     success, img = cap.read()
@@ -23,56 +32,48 @@ while True:
             x1, y1, w1, h1 = hand1['bbox']
             x2, y2, w2, h2 = hand2['bbox']
 
-            # Crop images for both hands
-            imgCrop1 = img[y1-offset:y1+h1+offset, x1-offset:x1+w1+offset]
-            imgCrop2 = img[y2-offset:y2+h2+offset, x2-offset:x2+w2+offset]
+            # Calculate the combined bounding box
+            x_min = min(x1, x2)
+            y_min = min(y1, y2)
+            x_max = max(x1 + w1, x2 + w2)
+            y_max = max(y1 + h1, y2 + h2)
 
-            # Create white background images for both hands
-            imgWhite1 = np.ones((imgSize, imgSize, 3), np.uint8) * 255
-            imgWhite2 = np.ones((imgSize, imgSize, 3), np.uint8) * 255
+            # Crop the combined region
+            imgCrop = img[y_min-offset:y_max+offset, x_min-offset:x_max+offset]
 
-            # Check if both cropped images are valid (non-empty)
-            if imgCrop1.size == 0 or imgCrop2.size == 0:
-                print("Warning: One of the cropped images is empty. Skipping concatenation.")
+            # Create a white background image
+            imgWhite = np.ones((imgSize, imgSize, 3), np.uint8) * 255
+
+            # Check if the cropped image is valid (non-empty)
+            if imgCrop.size == 0:
+                print("Warning: Cropped image is empty.")
             else:
-                # Resize and paste the cropped images onto the white background
-                aspect_ratio1 = h1 / w1
-                if aspect_ratio1 > 1:
-                    # Hand is taller than wide
-                    k = imgSize / h1
-                    w_cal = int(k * w1)
-                    img_resize1 = cv2.resize(imgCrop1, (w_cal, imgSize))
+                # Resize and paste the cropped image onto the white background
+                aspect_ratio = (y_max - y_min) / (x_max - x_min)
+                if aspect_ratio > 1:
+                    # Combined region is taller than wide
+                    k = imgSize / (y_max - y_min)
+                    w_cal = int(k * (x_max - x_min))
+                    img_resize = cv2.resize(imgCrop, (w_cal, imgSize))
                     w_gap = (imgSize - w_cal) // 2
-                    imgWhite1[:, w_gap:w_gap + w_cal] = img_resize1
+                    imgWhite[:, w_gap:w_gap + w_cal] = img_resize
                 else:
-                    # Hand is wider than tall
-                    k = imgSize / w1
-                    h_cal = int(k * h1)
-                    img_resize1 = cv2.resize(imgCrop1, (imgSize, h_cal))
+                    # Combined region is wider than tall
+                    k = imgSize / (x_max - x_min)
+                    h_cal = int(k * (y_max - y_min))
+                    img_resize = cv2.resize(imgCrop, (imgSize, h_cal))
                     h_gap = (imgSize - h_cal) // 2
-                    imgWhite1[h_gap:h_gap + h_cal, :] = img_resize1
+                    imgWhite[h_gap:h_gap + h_cal, :] = img_resize
 
-                aspect_ratio2 = h2 / w2
-                if aspect_ratio2 > 1:
-                    # Hand is taller than wide
-                    k = imgSize / h2
-                    w_cal = int(k * w2)
-                    img_resize2 = cv2.resize(imgCrop2, (w_cal, imgSize))
-                    w_gap = (imgSize - w_cal) // 2
-                    imgWhite2[:, w_gap:w_gap + w_cal] = img_resize2
-                else:
-                    # Hand is wider than tall
-                    k = imgSize / w2
-                    h_cal = int(k * h2)
-                    img_resize2 = cv2.resize(imgCrop2, (imgSize, h_cal))
-                    h_gap = (imgSize - h_cal) // 2
-                    imgWhite2[h_gap:h_gap + h_cal, :] = img_resize2
+                # Display the white background image
+                cv2.imshow("Combined Hands", imgWhite)
 
-                # Combine the white background images horizontally
-                combined_img = cv2.hconcat([imgWhite1, imgWhite2])
-
-                # Display the combined image
-                cv2.imshow("Combined Hands", combined_img)
+                # Save the combined image automatically if save_images is True
+                if save_images:
+                    counter += 1
+                    save_path = os.path.join(folder, f"combined_{counter}.jpg")
+                    cv2.imwrite(save_path, imgWhite)
+                    print(f"Saved combined image to {save_path}")
 
         # If only one hand is detected
         elif len(hands) == 1:
@@ -106,10 +107,33 @@ while True:
                 # Display the white background image
                 cv2.imshow("Single Hand", imgWhite)
 
+                # Save the single hand image automatically if save_images is True
+                if save_images:
+                    counter += 1
+                    save_path = os.path.join(folder, f"single_{counter}.jpg")
+                    cv2.imwrite(save_path, imgWhite)
+                    print(f"Saved single hand image to {save_path}")
+
     # Display the original image with hand landmarks
     cv2.imshow("Image", img)
-    if cv2.waitKey(1) & 0xFF == ord('q'):  # Press 'q' to exit
+
+    # Check for key presses
+    key = cv2.waitKey(1)
+    if key & 0xFF == ord('s'):  # Press 's' to start/stop automatic saving
+        save_images = not save_images  # Toggle saving mode
+        if save_images:
+            start_time = time.time()  # Record the start time
+            print("Automatic saving started.")
+        else:
+            print("Automatic saving stopped.")
+
+    if key & 0xFF == ord('q'):  # Press 'q' to exit
         break
+
+    # Stop automatic saving after 5 seconds
+    if save_images and time.time() - start_time > 5:  # 5-second duration
+        save_images = False
+        print("Automatic saving stopped after 5 seconds.")
 
 cap.release()
 cv2.destroyAllWindows()
