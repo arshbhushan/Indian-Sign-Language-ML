@@ -5,10 +5,10 @@ import tensorflow as tf
 from sklearn.preprocessing import LabelEncoder
 
 # Load the trained model
-model = tf.keras.models.load_model("sign_language_model.h5")
+model = tf.keras.models.load_model("AtoZsign_language_model.h5")
 
 # Define the list of classes (in the same order as during training)
-classes = ["A", "B", "C"]  # Replace with your actual classes
+classes = ["A", "B", "C","D","E","F","G", "H", "I","J", "K", "L", "M", "N", "O", "P", "Q", "R", "S", "T", "U", "V", "W" ,"X", "Y", "Z"]
 
 # Create and fit the label encoder
 label_encoder = LabelEncoder()
