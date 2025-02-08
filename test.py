@@ -24,7 +24,7 @@ counter = 0  # Counter to keep track of saved images
 save_images = False  # Flag to control automatic saving
 start_time = None  # To track when saving starts
 
-labels = ["A","B","C"]
+labels =  ["A", "B", "C","D","E","F","G", "H", "I","J", "K", "L", "M", "N", "O", "P", "Q", "R", "S", "T", "U", "V", "W" ,"X", "Y", "Z"]
 
 while True:
     success, img = cap.read()
