@@ -3,9 +3,14 @@ from cvzone.HandTrackingModule import HandDetector
 import numpy as np
 import tensorflow as tf
 from sklearn.preprocessing import LabelEncoder
+import dlib
+from scipy.spatial import distance as dist
 
 # Load the trained model
 model = tf.keras.models.load_model("AtoZsign_language_model.h5")
+
+offset = 20
+imgSize = 350
 
 # Define the list of classes (in the same order as during training)
 classes = ["A", "B", "C", "D", "E", "F", "G", "H", "I", "J", "K", "L", "M", 
@@ -19,11 +24,25 @@ label_encoder.classes_ = np.array(classes)
 cap = cv2.VideoCapture(0)
 detector = HandDetector(maxHands=2)
 
-offset = 20
-imgSize = 350  # Fixed size for the output images
+# Initialize dlib's face detector and facial landmark predictor
+detector_dlib = dlib.get_frontal_face_detector()
+predictor = dlib.shape_predictor("shape_predictor_68_face_landmarks.dat")  # Ensure this file is in the same directory
 
-# List to store selected words
-selected_words = []
+# Constants for EAR-based blink detection
+EYE_AR_THRESH = 0.25  # EAR threshold to consider a blink
+EYE_AR_CONSEC_FRAMES = 3  # Number of consecutive frames to confirm a blink
+
+
+# Function to calculate Eye Aspect Ratio (EAR)
+def eye_aspect_ratio(eye):
+    """
+    Calculate the Eye Aspect Ratio (EAR) for a given eye.
+    """
+    A = dist.euclidean(eye[1], eye[5])
+    B = dist.euclidean(eye[2], eye[4])
+    C = dist.euclidean(eye[0], eye[3])
+    ear = (A + B) / (2.0 * C)
+    return ear
 
 # Function to preprocess the image
 def preprocess_image(image, target_size=(224, 224)):
@@ -70,28 +89,62 @@ def get_word_suggestions(alphabet):
     }
     return word_dict.get(alphabet, [])
 
-# Function to display word suggestions and allow selection
-def select_word(suggestions):
-    """
-    Display word suggestions and allow the user to select one.
-    """
-    print("Select a word:")
-    for i, word in enumerate(suggestions):
-        print(f"{i + 1}. {word}")
-    choice = input("Enter the number of the word you want to select: ")
-    try:
-        choice = int(choice) - 1
-        if 0 <= choice < len(suggestions):
-            return suggestions[choice]
-    except:
-        pass
-    return None
+# Initialize counters and flags
+blink_counter = 0
+blink_frames = 0
+both_hands_visible = False
 
+# List to store selected words
+selected_words = []
+
+
+# Main loop
 while True:
     success, img = cap.read()
-    hands, img = detector.findHands(img)  # Detect hands
+    if not success:
+        break
 
+    # Detect hands
+    hands, img = detector.findHands(img)
+
+    # Check if hands are visible
     if hands:
+        # If hands are visible, proceed with blink detection
+        # Convert to grayscale for face detection
+        gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+
+        # Detect faces using dlib
+        faces = detector_dlib(gray)
+        for face in faces:
+            # Get facial landmarks
+            landmarks = predictor(gray, face)
+            landmarks = np.array([[p.x, p.y] for p in landmarks.parts()])
+
+            # Extract eye landmarks (indices for left and right eyes)
+            left_eye = landmarks[36:42]  # Left eye landmarks
+            right_eye = landmarks[42:48]  # Right eye landmarks
+
+            # Calculate EAR for both eyes
+            left_ear = eye_aspect_ratio(left_eye)
+            right_ear = eye_aspect_ratio(right_eye)
+            ear = (left_ear + right_ear) / 2.0  # Average EAR
+
+            # Check if EAR is below the threshold (blink detected)
+            if ear < EYE_AR_THRESH:
+                blink_frames += 1
+            else:
+                if blink_frames >= EYE_AR_CONSEC_FRAMES:
+                    blink_counter += 1
+                    print(f"Blink Detected! Total Blinks: {blink_counter}")
+                    # Cap the blink counter at 3
+                    if blink_counter > 3:
+                        blink_counter = 3
+                blink_frames = 0  # Reset blink frames after a blink is confirmed
+
+        # Display blink count on the screen
+        cv2.putText(img, f"Blinks: {blink_counter}", (10, 450),
+                    cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 255, 0), 2)
+
         # If two hands are detected
         if len(hands) == 2:
             # Get bounding boxes for both hands
@@ -151,12 +204,21 @@ while True:
                     cv2.putText(img, f"{i + 1}. {word}", (10, 100 + i * 30),
                                 cv2.FONT_HERSHEY_SIMPLEX, 0.8, (0, 255, 0), 2)
 
-                # Allow the user to select a word
-                key = cv2.waitKey(1)
-                if key in [ord(str(i + 1)) for i in range(len(suggestions))]:
-                    selected_word = suggestions[key - ord('1')]
-                    selected_words.append(selected_word)
-                    print(f"Selected Word: {selected_word}")
+                # Use blink counter to select a word (only if both hands are visible)
+                if blink_counter > 0:
+                    if blink_counter == 1:
+                        selected_word = predicted_class  # Alphabet itself
+                    elif blink_counter == 2:
+                        selected_word = suggestions[0]  # First suggestion
+                    elif blink_counter == 3:
+                        selected_word = suggestions[1]  # Second suggestion
+                    else:
+                        selected_word = None
+
+                    if selected_word:
+                        selected_words.append(selected_word)
+                        print(f"Selected Word: {selected_word}")
+                        blink_counter = 0  # Reset blink counter after selection
 
         # If only one hand is detected
         elif len(hands) == 1:
@@ -211,9 +273,21 @@ while True:
                     selected_word = suggestions[key - ord('1')]
                     selected_words.append(selected_word)
                     print(f"Selected Word: {selected_word}")
+                elif key == ord(' '):  # Space bar to add a space
+                    selected_words.append(" ")  # Add a space
+                    print("Space added")
+                elif key == ord('r'):  # Reset or erase the last word
+                    if selected_words:
+                        selected_words.pop()
+                        print("Last word erased")
+
+    # If no hands are visible, reset blink counter
+    else:
+        blink_counter = 0
+        blink_frames = 0
 
     # Display the formed sentence on the screen
-    sentence = " ".join(selected_words)
+    sentence = "".join(selected_words)  # Join words without spaces
     cv2.putText(img, f"Sentence: {sentence}", (10, 400),
                 cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 255, 0), 2)
 
