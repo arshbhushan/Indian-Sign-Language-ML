@@ -29,6 +29,7 @@ def preprocess_image(image, target_size=(224, 224)):
     image = image / 255.0  # Normalize pixel values
     return image
 
+# Main loop
 while True:
     success, img = cap.read()
     hands, img = detector.findHands(img)  # Detect hands
