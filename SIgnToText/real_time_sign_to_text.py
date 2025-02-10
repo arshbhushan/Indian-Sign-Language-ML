@@ -5,7 +5,7 @@ import tensorflow as tf
 from sklearn.preprocessing import LabelEncoder
 import dlib
 from scipy.spatial import distance as dist
-
+import time
 # Load the trained model
 model = tf.keras.models.load_model("AtoZsign_language_model.h5")
 
@@ -89,14 +89,13 @@ def get_word_suggestions(alphabet):
     }
     return word_dict.get(alphabet, [])
 
-# Initialize counters and flags
-blink_counter = 0
-blink_frames = 0
-both_hands_visible = False
-
 # List to store selected words
 selected_words = []
 
+blink_counter = 0
+blink_frames = 0
+selection_made = False  # Flag to track if a selection has been made
+last_blink_time = 0  # Track the time of the last blink
 
 # Main loop
 while True:
@@ -136,6 +135,7 @@ while True:
                 if blink_frames >= EYE_AR_CONSEC_FRAMES:
                     blink_counter += 1
                     print(f"Blink Detected! Total Blinks: {blink_counter}")
+                    last_blink_time = time.time()  # Update the last blink time
                     # Cap the blink counter at 3
                     if blink_counter > 3:
                         blink_counter = 3
@@ -205,20 +205,23 @@ while True:
                                 cv2.FONT_HERSHEY_SIMPLEX, 0.8, (0, 255, 0), 2)
 
                 # Use blink counter to select a word (only if both hands are visible)
-                if blink_counter > 0:
-                    if blink_counter == 1:
-                        selected_word = predicted_class  # Alphabet itself
-                    elif blink_counter == 2:
-                        selected_word = suggestions[0]  # First suggestion
-                    elif blink_counter == 3:
-                        selected_word = suggestions[1]  # Second suggestion
-                    else:
-                        selected_word = None
+                if blink_counter > 0 and not selection_made:
+                    # Check if 3 seconds have passed since the last blink
+                    if time.time() - last_blink_time > 3:
+                        if blink_counter == 1:
+                            selected_word = predicted_class  # Alphabet itself
+                        elif blink_counter == 2:
+                            selected_word = suggestions[0]  # First suggestion
+                        elif blink_counter == 3:
+                            selected_word = suggestions[1]  # Second suggestion
+                        else:
+                            selected_word = None
 
-                    if selected_word:
-                        selected_words.append(selected_word)
-                        print(f"Selected Word: {selected_word}")
-                        blink_counter = 0  # Reset blink counter after selection
+                        if selected_word:
+                            selected_words.append(selected_word)
+                            print(f"Selected Word: {selected_word}")
+                            selection_made = True  # Mark selection as made
+                            blink_counter = 0  # Reset blink counter after selection
 
         # If only one hand is detected
         elif len(hands) == 1:
@@ -281,10 +284,11 @@ while True:
                         selected_words.pop()
                         print("Last word erased")
 
-    # If no hands are visible, reset blink counter
+    # If no hands are visible, reset blink counter and selection flag
     else:
         blink_counter = 0
         blink_frames = 0
+        selection_made = False  # Reset selection flag
 
     # Display the formed sentence on the screen
     sentence = "".join(selected_words)  # Join words without spaces
