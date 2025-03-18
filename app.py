@@ -15,13 +15,15 @@ app = Flask(__name__)
 CORS(app)  # Enable CORS for all routes
 socketio = SocketIO(app, cors_allowed_origins="*")  # Enable WebSockets
 
-@socketio.on('connect')
-def handle_connect():
-    print('Client connected')
+# Global variables to store predictions, blink counter, and sentence
+current_prediction = ""
+current_suggestions = []
+blink_counter = 0
+sentence = ""
+blink_frames = 0
+last_blink_time = 0
+selection_made = False
 
-@socketio.on('disconnect')
-def handle_disconnect():
-    print('Client disconnected')
 # Load the model and initialize components
 model = tf.keras.models.load_model("AtoZsign_language_model.h5")
 offset = 20
@@ -82,15 +84,6 @@ def get_word_suggestions(alphabet):
         "Z": ["zoo", "zero", "zebra"]
     }
     return word_dict.get(alphabet, [])
-
-# Global variables to store predictions, blink counter, and sentence
-current_prediction = ""
-current_suggestions = []
-blink_counter = 0
-sentence = ""
-blink_frames = 0
-last_blink_time = 0
-selection_made = False
 
 def generate_frames():
     global current_prediction, current_suggestions, blink_counter, sentence, blink_frames, last_blink_time, selection_made
@@ -206,7 +199,7 @@ def generate_frames():
             selection_made = False  # Reset selection flag
 
         # Send updates to the client via WebSocket
-        print(f"Sending update: {current_prediction}, {current_suggestions}, {blink_counter}, {sentence}")
+        print(f"Emitting update: {current_prediction}, {current_suggestions}, {blink_counter}, {sentence}")  # Log the emitted data
         socketio.emit('update', {
             "prediction": current_prediction,
             "suggestions": current_suggestions,
