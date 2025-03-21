@@ -10,7 +10,8 @@ import dlib
 from scipy.spatial import distance as dist
 import time
 import eventlet
-
+import logging
+logging.basicConfig(level=logging.DEBUG)
 app = Flask(__name__)
 CORS(app)  # Enable CORS for all routes
 socketio = SocketIO(app, cors_allowed_origins="*")  # Enable WebSockets
@@ -199,13 +200,14 @@ def generate_frames():
             selection_made = False  # Reset selection flag
 
         # Send updates to the client via WebSocket
-        print(f"Emitting update: {current_prediction}, {current_suggestions}, {blink_counter}, {sentence}")  # Log the emitted data
+        #print(f"Emitting update: {current_prediction}, {current_suggestions}, {blink_counter}, {sentence}")  # Log the emitted data
         socketio.emit('update', {
             "prediction": current_prediction,
             "suggestions": current_suggestions,
             "blink_counter": blink_counter,
             "sentence": sentence
         })
+        print(f"Emitting update: {current_prediction}, {current_suggestions}, {blink_counter}, {sentence}")
 
         # Encode the frame as JPEG
         ret, buffer = cv2.imencode('.jpg', img)
@@ -219,4 +221,4 @@ def video_feed():
     return Response(generate_frames(), mimetype='multipart/x-mixed-replace; boundary=frame')
 
 if __name__ == '__main__':
-    socketio.run(app, host='0.0.0.0', port=5000)
+    socketio.run(app, host='0.0.0.0', port=5000, debug=True)
