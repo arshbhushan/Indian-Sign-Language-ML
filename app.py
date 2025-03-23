@@ -10,8 +10,7 @@ import dlib
 from scipy.spatial import distance as dist
 import time
 import eventlet
-import logging
-logging.basicConfig(level=logging.DEBUG)
+
 app = Flask(__name__)
 CORS(app)  # Enable CORS for all routes
 socketio = SocketIO(app, cors_allowed_origins="*")  # Enable WebSockets
@@ -221,4 +220,4 @@ def video_feed():
     return Response(generate_frames(), mimetype='multipart/x-mixed-replace; boundary=frame')
 
 if __name__ == '__main__':
-    socketio.run(app, host='0.0.0.0', port=5000, debug=True)
+    socketio.run(app, host='0.0.0.0', port=5000)
